@@ -1,0 +1,43 @@
+import { AdItem } from '../types';
+
+export const INITIAL_ADS: AdItem[] = [
+  {
+    id: 'ad-tea-fest',
+    badge: 'SPONSORED MEGA OFFER',
+    title: 'Sylhet Garden First-Flush Organic Green Tea',
+    subtitle: 'Handpicked whole leaf green tea straight from Sreemangal tea estates. Rich aroma, high antioxidants with complimentary earthen tea mug!',
+    discountText: 'FLAT 25% OFF',
+    imageUrl: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=1200&auto=format&fit=crop&q=80',
+    actionText: 'Order Organic Tea',
+    targetCategory: 'Organic Food',
+    sponsorName: 'Riyad Shop • Verified Agro Partner',
+    isActive: true,
+    bgGradient: 'from-emerald-950/90 via-[#0b1d16]/80 to-neutral-950/95',
+  },
+  {
+    id: 'ad-plant-exhibition',
+    badge: 'NURSERY EXCLUSIVE',
+    title: 'Exotic Monstera, Rare Bonsai & Desk Succulents',
+    subtitle: 'Transform your room & office into a green sanctuary. 100% home-acclimatized plants with safe cash on delivery nationwide!',
+    discountText: 'UP TO 35% OFF',
+    imageUrl: 'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?w=1200&auto=format&fit=crop&q=80',
+    actionText: 'Shop Indoor Plants',
+    targetCategory: 'Home & Garden',
+    sponsorName: 'Rifat Shop • Green Nursery Specialist',
+    isActive: true,
+    bgGradient: 'from-teal-950/90 via-[#08201a]/85 to-neutral-950/95',
+  },
+  {
+    id: 'ad-terracotta-heritage',
+    badge: 'VILLAGE ARTISAN EXPO',
+    title: 'Handcrafted Terracotta Clay Pottery & Tea Sets',
+    subtitle: 'Eco-friendly natural clay teapots, cups, and spice jars crafted by master rural artisans of Dhamrai and Rayer Bazar.',
+    discountText: 'BUY 2 GET 1 FREE',
+    imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=1200&auto=format&fit=crop&q=80',
+    actionText: 'Explore Pottery Arts',
+    targetCategory: 'Home & Garden',
+    sponsorName: 'Raju Traditional Pottery',
+    isActive: true,
+    bgGradient: 'from-amber-950/90 via-[#1f130b]/85 to-neutral-950/95',
+  },
+];
