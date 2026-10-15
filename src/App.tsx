@@ -16,9 +16,10 @@ import { NotificationsView } from './components/views/NotificationsView';
 import { ChatView } from './components/views/ChatView';
 import { ProductReelsView } from './components/views/ProductReelsView';
 import { AdBoard } from './components/AdBoard';
+import { TrustBanner } from './components/TrustBanner';
 import { INITIAL_PRODUCTS } from './data/products';
 import { INITIAL_NOTIFICATIONS } from './data/notifications';
-import { Product, CartItem, SidebarTab, AppNotification } from './types';
+import { Product, CartItem, SidebarTab, AppNotification, CurrentUser } from './types';
 import { MessageSquare, Briefcase, Sparkles, Check, Phone, ArrowRight } from 'lucide-react';
 
 export default function App() {
@@ -44,6 +45,64 @@ export default function App() {
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
   const [selectedProductForChat, setSelectedProductForChat] = useState<Product | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // User Authentication State (Persisted in localStorage)
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_current_user');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return null;
+  });
+
+  const handleLoginSuccess = (user: CurrentUser) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem('greenshop_current_user', JSON.stringify(user));
+    } catch {
+      // fallback
+    }
+    triggerToast(`🎉 স্বাগতম, ${user.name}! আপনার প্রোফাইল তৈরি হয়েছে।`);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem('greenshop_current_user');
+    } catch {
+      // fallback
+    }
+    triggerToast('👋 সফলভাবে লগআউট করা হয়েছে।');
+  };
+
+  // Wishlist / Favorites State (Persisted in localStorage)
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_favorites');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return ['p1', 'p3'];
+  });
+
+  const handleToggleFavorite = (productId: string) => {
+    setFavorites((prev) => {
+      const isFav = prev.includes(productId);
+      const updated = isFav ? prev.filter((id) => id !== productId) : [...prev, productId];
+      try {
+        localStorage.setItem('greenshop_favorites', JSON.stringify(updated));
+      } catch {
+        // fallback
+      }
+      triggerToast(
+        isFav ? 'পছন্দের তালিকা থেকে সরানো হয়েছে' : '❤️ পছন্দের তালিকায় যুক্ত করা হয়েছে'
+      );
+      return updated;
+    });
+  };
 
   const categories = ['All', 'Electronics', 'Fashion', 'Home & Garden', 'Health', 'Organic Food'];
 
@@ -215,20 +274,24 @@ export default function App() {
   // Filtered products based on search and category
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
+      const matchesSearch =
+        product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.description.toLowerCase().includes(searchQuery.toLowerCase());
+
+      if (selectedCategory === 'Wishlist') {
+        return matchesSearch && favorites.includes(product.id);
+      }
+
       const matchesCategory =
         selectedCategory === 'All' ||
         product.category === selectedCategory ||
         (selectedCategory === 'Home & Garden' && product.isHandmade) ||
         (selectedCategory === 'Organic Food' && product.isOrganic);
 
-      const matchesSearch =
-        product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchQuery.toLowerCase());
-
       return matchesCategory && matchesSearch;
     });
-  }, [products, selectedCategory, searchQuery]);
+  }, [products, selectedCategory, searchQuery, favorites]);
 
   const totalCartCount = cart.reduce((total, item) => total + item.quantity, 0);
   const isDashboard = activeTab === 'dashboard';
@@ -250,11 +313,16 @@ export default function App() {
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
         onOpenChat={() => setActiveTab('chat')}
         onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
         unreadNotificationCount={unreadNotificationCount}
+        products={products}
+        onViewProduct={setSelectedProductForDetail}
+        onAddToCart={handleAddToCart}
       />
 
       {/* Main Layout: Left Sidebar + Content Area */}
@@ -292,17 +360,21 @@ export default function App() {
             />
           ) : activeTab === 'home' || activeTab === 'marketplace' ? (
             <div>
+              {/* Trust & Guarantee Micro-Strip */}
+              <TrustBanner />
+
               {/* Ad Board (Admin Controlled) in the gap between Header Search and Categories */}
               <AdBoard onSelectCategory={setSelectedCategory} />
 
-              {/* Category Filter Chips */}
+              {/* Category Filter Chips with Wishlist count */}
               <CategoryChips
                 categories={categories}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
+                favoriteCount={favorites.length}
               />
 
-              {/* Product Grid Header info if searching */}
+              {/* Product Grid Header info if searching or in Wishlist */}
               {searchQuery && (
                 <div className="mb-4 flex items-center justify-between text-xs text-neutral-400">
                   <span>
@@ -310,9 +382,23 @@ export default function App() {
                   </span>
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="text-emerald-400 hover:underline"
+                    className="text-emerald-400 hover:underline cursor-pointer"
                   >
                     Clear Search
+                  </button>
+                </div>
+              )}
+
+              {selectedCategory === 'Wishlist' && (
+                <div className="mb-4 flex items-center justify-between p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs">
+                  <span className="font-bold text-rose-300">
+                    ❤️ আপনার পছন্দের তালিকাভুক্ত প্রোডাক্টসমূহ ({filteredProducts.length}টি)
+                  </span>
+                  <button
+                    onClick={() => setSelectedCategory('All')}
+                    className="text-neutral-400 hover:text-white underline cursor-pointer"
+                  >
+                    সবগুলো প্রোডাক্ট দেখুন
                   </button>
                 </div>
               )}
@@ -325,12 +411,16 @@ export default function App() {
                 >
                   {filteredProducts.map((product) => {
                     const isInCart = cart.some((i) => i.product.id === product.id);
+                    const isFavorite = favorites.includes(product.id);
                     return (
                       <ProductCard
                         key={product.id}
                         product={product}
                         onAddToCart={handleAddToCart}
                         onViewProduct={setSelectedProductForDetail}
+                        onQuickBuy={setSelectedProductForDetail}
+                        isFavorite={isFavorite}
+                        onToggleFavorite={handleToggleFavorite}
                         isInCart={isInCart}
                       />
                     );
@@ -453,6 +543,7 @@ export default function App() {
               onAddToCart={handleAddToCart}
               onOpenChat={() => setActiveTab('chat')}
               onViewProduct={setSelectedProductForDetail}
+              currentUser={currentUser}
               onProductPublished={(newProd) => {
                 setProducts((prev) => [newProd, ...prev]);
                 const publishNotif: AppNotification = {
@@ -524,6 +615,7 @@ export default function App() {
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
       />
     </div>
   );

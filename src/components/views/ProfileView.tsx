@@ -27,7 +27,7 @@ import {
   Layers,
   Search,
 } from 'lucide-react';
-import { Product } from '../../types';
+import { Product, CurrentUser } from '../../types';
 import { CreatePostModal, ProductPostData } from '../CreatePostModal';
 
 interface ProfileViewProps {
@@ -35,6 +35,7 @@ interface ProfileViewProps {
   onOpenChat: () => void;
   onViewProduct?: (product: Product) => void;
   onProductPublished?: (product: Product) => void;
+  currentUser?: CurrentUser | null;
 }
 
 interface ProfileProduct {
@@ -147,6 +148,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenChat,
   onViewProduct,
   onProductPublished,
+  currentUser = null,
 }) => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(1200);
@@ -158,13 +160,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // User Profile Data
+  // User Profile Data (dynamically uses currentUser if logged in)
   const userProfile = {
-    name: 'Rifat Islam 123',
-    uid: '0000129619',
-    role: 'Verified Seller & Nursery Specialist',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-    bio: 'Your trusted source for quality green plants & gardening tools. 🌱 Same-day shipping available in Dhaka. 🌿 Organic compost and terracotta pottery.',
+    name: currentUser?.name || 'Rifat Islam 123',
+    uid: currentUser ? (currentUser.provider === 'facebook' ? 'FB-908124' : 'GS-001296') : '0000129619',
+    role: currentUser?.provider === 'facebook' ? 'Verified Facebook Customer' : 'Verified Seller & Nursery Specialist',
+    avatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+    bio: currentUser 
+      ? `Welcome to ${currentUser.name}'s verified GreenShop dashboard. 🌱 Active organic shopper & plant enthusiast.`
+      : 'Your trusted source for quality green plants & gardening tools. 🌱 Same-day shipping available in Dhaka. 🌿 Organic compost and terracotta pottery.',
   };
 
   // Posts State (persisted with fallback)

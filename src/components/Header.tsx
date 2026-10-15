@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Search,
   ShoppingBag,
@@ -8,9 +8,16 @@ import {
   Settings,
   AlertTriangle,
   Headphones,
-  ChevronRight
+  ChevronRight,
+  User,
+  LogOut,
+  UserPlus,
+  X,
+  Sparkles,
+  Plus,
+  Check
 } from 'lucide-react';
-import { SidebarTab } from '../types';
+import { SidebarTab, CurrentUser, Product } from '../types';
 import { QuickMenuModal } from './QuickMenuModal';
 
 interface HeaderProps {
@@ -19,11 +26,16 @@ interface HeaderProps {
   cartCount: number;
   onOpenCart: () => void;
   onOpenAuth?: () => void;
+  currentUser?: CurrentUser | null;
+  onLogout?: () => void;
   onOpenChat?: () => void;
   onToggleMobileSidebar: () => void;
   activeTab: SidebarTab;
   onSelectTab: (tab: SidebarTab) => void;
   unreadNotificationCount?: number;
+  products?: Product[];
+  onViewProduct?: (product: Product) => void;
+  onAddToCart?: (product: Product) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,12 +43,26 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   cartCount,
   onOpenCart,
+  onOpenAuth,
+  currentUser = null,
+  onLogout,
   onToggleMobileSidebar,
   activeTab,
   onSelectTab,
   unreadNotificationCount = 0,
+  products = [],
+  onViewProduct,
+  onAddToCart,
 }) => {
   const isNotificationActive = activeTab === 'notifications';
+
+  // Live search preview state
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // User profile dropdown state
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   // 3-line menu dropdown and modal states
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
@@ -44,16 +70,36 @@ export const Header: React.FC<HeaderProps> = ({
   const [modalSection, setModalSection] = useState<'settings' | 'report' | 'customer_service'>('settings');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsMenuDropdownOpen(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchFocused(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Filtered live search suggestions
+  const searchMatches = useMemo(() => {
+    if (!searchQuery.trim() || !products.length) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return products
+      .filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q) ||
+          p.vendor.toLowerCase().includes(q)
+      )
+      .slice(0, 5);
+  }, [searchQuery, products]);
 
   const handleOpenSection = (section: 'settings' | 'report' | 'customer_service') => {
     setModalSection(section);
@@ -166,29 +212,208 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Center: Search Bar */}
-      <div className="flex-1 min-w-[85px] max-w-xl mx-1.5 sm:mx-4 md:mx-8">
+      {/* Center: Search Bar with Live Preview Dropdown */}
+      <div className="flex-1 min-w-[85px] max-w-xl mx-1.5 sm:mx-4 md:mx-8 relative" ref={searchContainerRef}>
         <div className="relative flex items-center group">
           <input
             id="global-search-input"
             type="text"
             value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search products..."
-            className="w-full h-8 sm:h-9 md:h-10 pl-3 sm:pl-4 pr-8 sm:pr-10 text-xs sm:text-sm bg-[#1a1b20] text-neutral-200 placeholder-neutral-500 rounded-full border border-neutral-800 focus:border-emerald-500 focus:bg-[#1e1f25] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
+            onFocus={() => setIsSearchFocused(true)}
+            onChange={(e) => {
+              onSearchChange(e.target.value);
+              setIsSearchFocused(true);
+            }}
+            placeholder="Search products, organic items..."
+            className="w-full h-8 sm:h-9 md:h-10 pl-3 sm:pl-4 pr-14 sm:pr-16 text-xs sm:text-sm bg-[#1a1b20] text-neutral-200 placeholder-neutral-500 rounded-full border border-neutral-800 focus:border-emerald-500 focus:bg-[#1e1f25] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
           />
-          <button
-            id="global-search-btn"
-            aria-label="Search"
-            className="absolute right-2.5 sm:right-3 p-1 text-neutral-400 hover:text-emerald-400 transition-colors"
-          >
-            <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+
+          <div className="absolute right-2.5 sm:right-3 flex items-center gap-1">
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchChange('');
+                  setIsSearchFocused(false);
+                }}
+                className="p-1 text-neutral-400 hover:text-white rounded-full hover:bg-neutral-800 transition-colors cursor-pointer"
+                title="সার্চ ক্লিয়ার করুন"
+              >
+                <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </button>
+            )}
+            <button
+              id="global-search-btn"
+              aria-label="Search"
+              className="p-1 text-neutral-400 hover:text-emerald-400 transition-colors cursor-pointer"
+            >
+              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* Live Search Instant Preview Dropdown */}
+        {isSearchFocused && searchQuery.trim().length > 0 && (
+          <div className="absolute left-0 right-0 top-full mt-2 bg-[#171821] border border-[#2c2e3c] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-2 border-b border-[#262835] flex items-center justify-between text-[11px] text-neutral-400 px-3">
+              <span className="flex items-center gap-1 font-bold text-emerald-400">
+                <Sparkles className="w-3 h-3" />
+                <span>লাইভ সার্চ ফলাফল ({searchMatches.length})</span>
+              </span>
+              <span>"{searchQuery}"</span>
+            </div>
+
+            {searchMatches.length > 0 ? (
+              <div className="divide-y divide-[#222430] max-h-72 overflow-y-auto">
+                {searchMatches.map((prod) => (
+                  <div
+                    key={prod.id}
+                    onClick={() => {
+                      onViewProduct?.(prod);
+                      setIsSearchFocused(false);
+                    }}
+                    className="p-2 sm:p-2.5 flex items-center justify-between gap-2.5 hover:bg-[#20222d] transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={prod.image}
+                        alt={prod.title}
+                        className="w-10 h-10 rounded-xl object-cover border border-emerald-500/30 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+                          {prod.title}
+                        </h4>
+                        <div className="flex items-center gap-2 text-[10px] text-neutral-400">
+                          <span className="text-emerald-400 font-bold">৳{prod.price}</span>
+                          <span>•</span>
+                          <span className="truncate">{prod.category}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {onAddToCart && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddToCart(prod);
+                        }}
+                        className="p-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white transition-all shrink-0 cursor-pointer"
+                        title="কার্টে যোগ করুন"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 text-center text-xs text-neutral-400">
+                <span>"{searchQuery}" দিয়ে কোনো প্রোডাক্ট খুঁজে পাওয়া যায়নি।</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Right Controls: Only Notification and Shop Icons (Professional & Clean) */}
+      {/* Right Controls: Sign Up / Profile, Notification and Shop Icons */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3 shrink-0">
+        
+        {/* Sign Up Button (Visible only when user is NOT logged in) */}
+        {!currentUser?.isLoggedIn ? (
+          <button
+            id="header-signup-btn"
+            onClick={onOpenAuth}
+            title="গ্রিনশপে সাইন আপ বা লগইন করুন"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-600 hover:from-emerald-500 hover:to-green-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition-all cursor-pointer group shrink-0"
+          >
+            {/* GreenShop Shopping Bag Icon */}
+            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+              <ShoppingBag className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
+            </div>
+            <span className="tracking-tight text-xs font-bold">Sign Up</span>
+          </button>
+        ) : (
+          /* Logged In User Profile Pill (Signup button vanishes, User Name is displayed) */
+          <div className="relative shrink-0" ref={userMenuRef}>
+            <button
+              id="header-user-profile-btn"
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2.5 sm:pr-3 py-1 sm:py-1.5 rounded-full bg-[#1b1c24] hover:bg-[#232530] border border-[#2e303d] hover:border-emerald-500/50 text-white transition-all cursor-pointer group shadow-sm active:scale-95"
+              title={`লগইন আছেন: ${currentUser.name}`}
+            >
+              <img
+                src={currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80'}
+                alt={currentUser.name}
+                className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-emerald-400/60"
+              />
+              <span className="text-xs font-bold text-emerald-400 max-w-[80px] sm:max-w-[120px] truncate">
+                {currentUser.name}
+              </span>
+            </button>
+
+            {/* Profile Dropdown Menu */}
+            {isUserMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-[#16171f] border border-[#2b2d39] rounded-2xl p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-2 border-b border-[#242633] mb-1">
+                  <div className="flex items-center gap-2">
+                    <img
+                      src={currentUser.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80'}
+                      alt={currentUser.name}
+                      className="w-9 h-9 rounded-full object-cover border-2 border-emerald-400"
+                    />
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-bold text-white truncate">{currentUser.name}</p>
+                      <p className="text-[10px] text-neutral-400 truncate">{currentUser.phoneOrEmail}</p>
+                    </div>
+                  </div>
+                  {currentUser.provider === 'facebook' && (
+                    <span className="mt-1.5 inline-flex items-center gap-1 text-[9px] font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-md">
+                      ✓ Facebook লিঙ্কড প্রোফাইল
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    onSelectTab('profile');
+                    setIsUserMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-200 hover:text-white hover:bg-[#20222d] rounded-xl transition-colors cursor-pointer"
+                >
+                  <User className="w-4 h-4 text-emerald-400" />
+                  <span>আমার প্রোফাইল দেখুন</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    onSelectTab('tracking');
+                    setIsUserMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-neutral-200 hover:text-white hover:bg-[#20222d] rounded-xl transition-colors cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4 text-amber-400" />
+                  <span>আমার অর্ডারসমূহ</span>
+                </button>
+
+                <div className="border-t border-[#242633] my-1"></div>
+
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    onLogout?.();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 text-rose-400" />
+                  <span>লগআউট করুন (Log Out)</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Professional Notification Icon Button */}
         <button
           id="header-notification-btn"

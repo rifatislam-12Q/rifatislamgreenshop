@@ -77,3 +77,13 @@ export interface AdItem {
   isActive: boolean;
   bgGradient?: string;
 }
+
+export interface CurrentUser {
+  name: string;
+  phoneOrEmail: string;
+  avatar?: string;
+  isLoggedIn: boolean;
+  provider?: 'facebook' | 'manual';
+  joinedDate?: string;
+}
+
