@@ -10,6 +10,7 @@ import {
   TrendingUp,
   MessageSquare,
   Bell,
+  Settings,
   X,
 } from 'lucide-react';
 import { SidebarTab } from '../types';
@@ -21,6 +22,7 @@ interface SidebarProps {
   onCloseMobile: () => void;
   unreadChatCount?: number;
   unreadNotificationCount?: number;
+  onOpenSettings?: (section?: 'settings' | 'report' | 'customer_service') => void;
 }
 
 interface NavItem {
@@ -38,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   unreadChatCount = 2,
   unreadNotificationCount = 0,
+  onOpenSettings,
 }) => {
   const navItems: NavItem[] = [
     { id: 'home', label: 'Marketplace', icon: ShoppingBag },
@@ -151,6 +154,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          {/* Settings Item with Icon */}
+          {onOpenSettings && (
+            <div className="pt-2 mt-2 border-t border-[#202025]">
+              <button
+                id="sidebar-nav-settings"
+                type="button"
+                onClick={() => {
+                  onCloseMobile();
+                  onOpenSettings('settings');
+                }}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium text-neutral-400 hover:text-white hover:bg-[#19191d] transition-all text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <Settings className="w-4 h-4 text-neutral-400 group-hover:text-emerald-400 transition-colors" />
+                  <span>Settings</span>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </>

@@ -1,1 +1,30 @@
 @import "tailwindcss";
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #greenshop-printable-invoice,
+  #greenshop-printable-invoice * {
+    visibility: visible !important;
+  }
+
+  #greenshop-printable-invoice {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+    border: none !important;
+    z-index: 99999 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

@@ -23,6 +23,35 @@ export interface CartItem {
   quantity: number;
 }
 
+export type SortOption = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest';
+
+export type QuickFilter = 'all' | 'organic' | 'handmade' | 'under-500';
+
+export type PaymentMethodType = 'cash_on_delivery' | 'bkash' | 'nagad' | 'rocket';
+
+export interface InvoiceItem {
+  title: string;
+  vendor: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface InvoiceData {
+  orderNumber: string;
+  date: string;
+  customerName: string;
+  phone: string;
+  address: string;
+  paymentMethod: PaymentMethodType;
+  trxId?: string;
+  promoCode?: string;
+  discountAmount?: number;
+  deliveryCharge: number;
+  subtotal: number;
+  totalAmount: number;
+  items: InvoiceItem[];
+}
+
 export type SidebarTab =
   | 'home'
   | 'profile'
@@ -86,4 +115,3 @@ export interface CurrentUser {
   provider?: 'facebook' | 'manual';
   joinedDate?: string;
 }
-

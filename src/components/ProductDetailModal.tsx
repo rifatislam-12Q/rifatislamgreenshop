@@ -26,15 +26,29 @@ import {
   Package,
   Video,
   Play,
-  Film
+  Film,
+  Tag,
+  Smartphone,
+  FileText,
+  AlertCircle
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product, CurrentUser, InvoiceData, PaymentMethodType } from '../types';
+import {
+  BD_DIVISIONS,
+  FREE_DELIVERY_THRESHOLD,
+  MERCHANT_WALLET_NUMBER,
+  calculatePromo,
+  saveOrderToTracking,
+} from '../utils/checkout';
+import { InvoiceModal } from './InvoiceModal';
 
 interface ProductDetailModalProps {
   product: Product | null;
   onClose: () => void;
   onAddToCart: (product: Product, quantity: number) => void;
   onChatWithSeller: (product: Product) => void;
+  currentUser?: CurrentUser | null;
+  onOpenTracking?: () => void;
 }
 
 interface CustomerReview {
@@ -48,17 +62,6 @@ interface CustomerReview {
   likes: number;
   userLiked?: boolean;
 }
-
-const BD_DIVISIONS = [
-  'ঢাকা বিভাগ (Dhaka)',
-  'চট্টগ্রাম বিভাগ (Chattogram)',
-  'রাজশাহী বিভাগ (Rajshahi)',
-  'খুলনা বিভাগ (Khulna)',
-  'বরিশাল বিভাগ (Barishal)',
-  'সিলেট বিভাগ (Sylhet)',
-  'রংপুর বিভাগ (Rangpur)',
-  'ময়মনসিংহ বিভাগ (Mymensingh)',
-];
 
 // Helper to provide 3-4 gallery photos for any product
 const getProductGallery = (product: Product): string[] => {
@@ -139,6 +142,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onClose,
   onAddToCart,
   onChatWithSeller,
+  currentUser = null,
+  onOpenTracking,
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'reviews'>('info');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -154,18 +159,34 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [showBuyNowModal, setShowBuyNowModal] = useState(false);
   const [orderConfirmed, setOrderConfirmed] = useState(false);
   const [generatedOrderNumber, setGeneratedOrderNumber] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState('');
+  const [promoFeedback, setPromoFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [confirmedInvoice, setConfirmedInvoice] = useState<InvoiceData | null>(null);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
-  // Form Fields as explicitly requested:
-  // "apnar bivag, jela, thana, uniyon, gram esob pron kore oder confom korbe"
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    fullName: string;
+    phone: string;
+    division: string;
+    district: string;
+    thana: string;
+    union: string;
+    village: string;
+    paymentMethod: PaymentMethodType;
+    trxId: string;
+    notes: string;
+  }>({
     fullName: '',
     phone: '',
-    division: 'ঢাকা বিভাগ (Dhaka)',
+    division: BD_DIVISIONS[0],
     district: '',
     thana: '',
     union: '',
     village: '',
     paymentMethod: 'cash_on_delivery',
+    trxId: '',
     notes: '',
   });
 
@@ -216,7 +237,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     },
   ]);
 
-  // Reset when product changes
+  // Reset when product changes & pre-fill logged-in user info
   useEffect(() => {
     setActiveTab('info');
     setCurrentImageIndex(0);
@@ -224,7 +245,24 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     setShowBuyNowModal(false);
     setOrderConfirmed(false);
     setJustAddedCart(false);
-  }, [product]);
+    setCheckoutError('');
+    setPromoInput('');
+    setAppliedPromo('');
+    setPromoFeedback(null);
+    setConfirmedInvoice(null);
+    setShowInvoiceModal(false);
+    if (currentUser?.isLoggedIn) {
+      setFormData((prev) => ({
+        ...prev,
+        fullName: prev.fullName || currentUser.name,
+        phone:
+          prev.phone ||
+          (/^01\d{8,9}$/.test(currentUser.phoneOrEmail.replace(/\s+/g, ''))
+            ? currentUser.phoneOrEmail
+            : ''),
+      }));
+    }
+  }, [product, currentUser]);
 
   if (!product) return null;
 
@@ -282,43 +320,119 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     setShowReviewForm(false);
   };
 
+  const subtotal = product.price * quantity;
+  const baseDelivery =
+    subtotal >= FREE_DELIVERY_THRESHOLD
+      ? 0
+      : formData.division.includes('Dhaka')
+      ? 60
+      : 120;
+  const promoResult = calculatePromo(appliedPromo, subtotal, baseDelivery);
+  const discountAmount = promoResult.discount;
+  const deliveryCharge = promoResult.delivery;
+  const finalTotal = Math.max(0, subtotal - discountAmount + deliveryCharge);
+
+  const handleApplyPromo = (codeOverride?: string) => {
+    const targetCode = (codeOverride ?? promoInput).trim();
+    if (!targetCode) {
+      setAppliedPromo('');
+      setPromoFeedback(null);
+      return;
+    }
+    const res = calculatePromo(targetCode, subtotal, baseDelivery);
+    if (res.valid) {
+      setAppliedPromo(res.normalizedCode);
+      setPromoInput(res.normalizedCode);
+      setPromoFeedback({ ok: true, text: res.message });
+    } else {
+      setAppliedPromo('');
+      setPromoFeedback({ ok: false, text: res.message });
+    }
+  };
+
   // Form submit to confirm order
   const handleConfirmOrder = (e: React.FormEvent) => {
     e.preventDefault();
+    setCheckoutError('');
 
-    if (!formData.fullName.trim() || !formData.phone.trim() || !formData.district.trim() || !formData.thana.trim() || !formData.village.trim()) {
-      alert('দয়া করে আপনার নাম, মোবাইল নম্বর, জেলা, থানা এবং গ্রামের নাম পূরণ করুন!');
+    if (
+      !formData.fullName.trim() ||
+      !formData.phone.trim() ||
+      !formData.district.trim() ||
+      !formData.thana.trim() ||
+      !formData.village.trim()
+    ) {
+      setCheckoutError('দয়া করে আপনার নাম, মোবাইল নম্বর, জেলা, থানা এবং গ্রামের নাম পূরণ করুন।');
+      return;
+    }
+
+    if (formData.paymentMethod !== 'cash_on_delivery' && formData.trxId.trim().length < 5) {
+      setCheckoutError('অনলাইন পেমেন্টের জন্য সঠিক Transaction ID (TrxID) প্রদান করুন।');
       return;
     }
 
     const orderNum = `GS-${Math.floor(100000 + Math.random() * 900000)}`;
     setGeneratedOrderNumber(orderNum);
+    const fullAddress = `${formData.village}, ${formData.union ? formData.union + ', ' : ''}${formData.thana}, ${formData.district}, ${formData.division.split(' ')[0]}`;
 
-    // Save to tracking storage so TrackingView immediately picks it up
-    try {
-      const stored = localStorage.getItem('greenshop_tracked_orders_v1');
-      const existingOrders = stored ? JSON.parse(stored) : [];
-      const newTrackedOrder = {
-        id: `track-${Date.now()}`,
-        orderNumber: orderNum,
-        productTitle: product.title,
-        productImage: product.image,
-        vendor: product.vendor,
-        price: product.price,
-        quantity: quantity,
-        recipient: formData.fullName,
-        address: `${formData.village}, ${formData.union ? formData.union + ', ' : ''}${formData.thana}, ${formData.district}, ${formData.division.split(' ')[0]}`,
-        stage: 1,
-        stageLabel: 'Processing',
-        currentLocationNote: `অর্ডার গৃহীত হয়েছে। প্যাকেজিং চলছে।`,
-        estimatedDelivery: 'Within 24-48 Hours',
-        placedTime: 'এইমাত্র',
-      };
-      localStorage.setItem('greenshop_tracked_orders_v1', JSON.stringify([newTrackedOrder, ...existingOrders]));
-    } catch {
-      // ignore
-    }
+    const invoice: InvoiceData = {
+      orderNumber: orderNum,
+      date: new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
+      customerName: formData.fullName.trim(),
+      phone: formData.phone.trim(),
+      address: fullAddress,
+      paymentMethod: formData.paymentMethod,
+      trxId: formData.paymentMethod !== 'cash_on_delivery' ? formData.trxId.trim().toUpperCase() : undefined,
+      promoCode: appliedPromo || undefined,
+      discountAmount,
+      deliveryCharge,
+      subtotal,
+      totalAmount: finalTotal,
+      items: [
+        {
+          title: product.title,
+          vendor: product.vendor,
+          quantity,
+          unitPrice: product.price,
+        },
+      ],
+    };
 
+    saveOrderToTracking({
+      id: `track-${Date.now()}`,
+      orderNumber: orderNum,
+      productTitle: product.title,
+      productImage: product.image,
+      vendor: product.vendor,
+      price: finalTotal,
+      quantity,
+      recipient: formData.fullName.trim(),
+      phone: formData.phone.trim(),
+      address: fullAddress,
+      paymentMethod: formData.paymentMethod,
+      trxId: invoice.trxId,
+      promoCode: invoice.promoCode,
+      discountAmount,
+      deliveryCharge,
+      subtotal,
+      items: invoice.items,
+      stage: 1,
+      stageLabel: 'Seller',
+      currentLocationNote:
+        formData.paymentMethod === 'cash_on_delivery'
+          ? 'অর্ডার গৃহীত হয়েছে (ক্যাশ অন ডেলিভারি)। প্যাকেজিং চলছে।'
+          : `পেমেন্ট (${formData.paymentMethod.toUpperCase()} · ${invoice.trxId}) ভেরিফাইড। প্যাকেজিং চলছে।`,
+      estimatedDelivery: formData.division.includes('Dhaka')
+        ? '২৪-৪৮ ঘণ্টার মধ্যে'
+        : '৪৮-৭২ ঘণ্টার মধ্যে',
+      placedTime: 'এইমাত্র',
+    });
+
+    setConfirmedInvoice(invoice);
     setOrderConfirmed(true);
   };
 
@@ -954,12 +1068,22 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </div>
 
                   <div className="text-right shrink-0">
-                    <div className="text-sm font-black text-emerald-400">
-                      ৳{product.price * quantity}
+                    <div className="text-sm font-black text-emerald-400 tabular-nums">
+                      ৳{finalTotal.toLocaleString()}
                     </div>
-                    <span className="text-[10px] text-neutral-400">ডেলিভারি: ফ্রি</span>
+                    <span className="text-[10px] text-neutral-400">
+                      {deliveryCharge === 0 ? 'ডেলিভারি: ফ্রি' : `ডেলিভারি: ৳${deliveryCharge}`}
+                    </span>
                   </div>
                 </div>
+
+                {/* Inline Validation Error */}
+                {checkoutError && (
+                  <div className="mb-3 p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{checkoutError}</span>
+                  </div>
+                )}
 
                 {/* Form Inputs */}
                 <form onSubmit={handleConfirmOrder} className="space-y-3.5">
@@ -1081,23 +1205,117 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     />
                   </div>
 
-                  {/* Payment Method Badge */}
-                  <div className="p-3 rounded-xl bg-[#121317] border border-[#2b2d39] flex items-center justify-between">
+                  {/* Promo Code Box */}
+                  <div className="p-3 rounded-xl bg-[#121317] border border-[#2b2d39] space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>কুপন / প্রোমো কোড (ঐচ্ছিক)</span>
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPromo('GREEN10')}
+                          className="text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          GREEN10
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyPromo('WELCOME50')}
+                          className="text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          WELCOME50
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="কুপন কোড দিন..."
+                        value={promoInput}
+                        onChange={(e) => setPromoInput(e.target.value)}
+                        className="flex-1 px-3 py-1.5 bg-[#181920] border border-[#2d303d] rounded-lg text-xs text-white font-mono uppercase placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPromo()}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+                      >
+                        প্রয়োগ
+                      </button>
+                    </div>
+                    {promoFeedback && (
+                      <p className={`text-[11px] ${promoFeedback.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {promoFeedback.text}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Payment Method Selector */}
+                  <div className="p-3 rounded-xl bg-[#121317] border border-[#2b2d39] space-y-2.5">
                     <div className="flex items-center gap-2">
                       <CreditCard className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-semibold text-white">পেমেন্ট মেথড:</span>
+                      <span className="text-xs font-semibold text-white">পেমেন্ট মেথড নির্বাচন করুন:</span>
                     </div>
-                    <span className="text-xs font-bold px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                      💵 Cash on Delivery (হাতে পেয়ে টাকা দিন)
-                    </span>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {(
+                        [
+                          { id: 'cash_on_delivery', label: 'Cash on Delivery' },
+                          { id: 'bkash', label: 'bKash' },
+                          { id: 'nagad', label: 'Nagad' },
+                          { id: 'rocket', label: 'Rocket' },
+                        ] as { id: PaymentMethodType; label: string }[]
+                      ).map((pm) => (
+                        <button
+                          key={pm.id}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, paymentMethod: pm.id })}
+                          className={`py-2 px-2.5 rounded-xl border text-xs font-bold text-center transition-all cursor-pointer ${
+                            formData.paymentMethod === pm.id
+                              ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                              : 'bg-[#181920] border-[#2c2e3a] text-neutral-400 hover:text-white'
+                          }`}
+                        >
+                          {pm.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {formData.paymentMethod !== 'cash_on_delivery' && (
+                      <div className="p-2.5 rounded-xl bg-[#181920] border border-emerald-500/30 space-y-2">
+                        <p className="text-[11px] text-neutral-300">
+                          আমাদের <strong className="text-emerald-400 uppercase">{formData.paymentMethod}</strong> নম্বরে{' '}
+                          <strong className="text-white tabular-nums">৳{finalTotal.toLocaleString()}</strong> সেন্ড মানি করুন:{' '}
+                          <span className="font-mono font-bold text-emerald-300 select-all">
+                            {MERCHANT_WALLET_NUMBER}
+                          </span>
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <input
+                            type="text"
+                            required
+                            placeholder="Transaction ID লিখুন (যেমন: 9K7A2B1C)"
+                            value={formData.trxId}
+                            onChange={(e) => setFormData({ ...formData, trxId: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-[#121317] border border-[#2f3240] rounded-lg text-xs text-white font-mono placeholder-neutral-500 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Total and Action Buttons */}
                   <div className="pt-3 border-t border-[#282a36] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                     <div className="flex items-center justify-between sm:block">
-                      <span className="text-[11px] text-neutral-400 block">পরিশোধযোগ্য মোট মূল্য:</span>
-                      <span className="text-xl font-black text-emerald-400">
-                        ৳{product.price * quantity}
+                      <span className="text-[11px] text-neutral-400 block">
+                        পরিশোধযোগ্য মোট (ডেলিভারি {deliveryCharge === 0 ? 'ফ্রি' : `৳${deliveryCharge}`}
+                        {discountAmount > 0 ? `, ছাড় -৳${discountAmount}` : ''}):
+                      </span>
+                      <span className="text-xl font-black text-emerald-400 tabular-nums">
+                        ৳{finalTotal.toLocaleString()}
                       </span>
                     </div>
 
@@ -1124,17 +1342,20 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </>
             ) : (
               /* Success confirmation view */
-              <div className="py-6 text-center space-y-4 animate-in zoom-in-95">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border-2 border-emerald-500 shadow-xl animate-bounce">
+              <div className="py-5 text-center space-y-4 animate-in zoom-in-95">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border-2 border-emerald-500 shadow-xl">
                   <CheckCircle className="w-9 h-9 stroke-[2.5]" />
                 </div>
 
                 <div>
                   <h3 className="text-lg sm:text-xl font-black text-white">
-                    🎉 অভিনন্দন! আপনার অর্ডার সফলভাবে সম্পন্ন হয়েছে
+                    অভিনন্দন! আপনার অর্ডার সফলভাবে সম্পন্ন হয়েছে
                   </h3>
                   <p className="text-xs text-neutral-300 mt-1">
-                    অর্ডার ট্র্যাকিং আইডি: <span className="font-mono text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">{generatedOrderNumber}</span>
+                    অর্ডার ট্র্যাকিং আইডি:{' '}
+                    <span className="font-mono text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+                      {generatedOrderNumber}
+                    </span>
                   </p>
                 </div>
 
@@ -1154,21 +1375,58 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       {formData.village}, {formData.union ? formData.union + ', ' : ''}{formData.thana}, {formData.district}, {formData.division.split(' ')[0]}
                     </span>
                   </div>
+                  <div className="flex justify-between pb-1.5 border-b border-neutral-800">
+                    <span className="text-neutral-400">পেমেন্ট মেথড:</span>
+                    <span className="font-semibold text-white">
+                      {formData.paymentMethod === 'cash_on_delivery'
+                        ? 'Cash on Delivery'
+                        : `${formData.paymentMethod.toUpperCase()} (${formData.trxId})`}
+                    </span>
+                  </div>
                   <div className="flex justify-between pt-1">
-                    <span className="text-neutral-400">পেমেন্ট (ক্যাশ অন ডেলিভারি):</span>
-                    <span className="font-black text-emerald-400 text-sm">৳{product.price * quantity}</span>
+                    <span className="text-neutral-400">সর্বমোট মূল্য:</span>
+                    <span className="font-black text-emerald-400 text-sm tabular-nums">
+                      ৳{finalTotal.toLocaleString()}
+                    </span>
                   </div>
                 </div>
 
-                <div className="pt-2 flex items-center justify-center gap-3">
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
+                  {confirmedInvoice && (
+                    <button
+                      type="button"
+                      onClick={() => setShowInvoiceModal(true)}
+                      className="px-4 py-2.5 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs flex items-center gap-1.5 shadow-lg transition-all cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-600" />
+                      <span>ইনভয়েস / ক্যাশ মেমো</span>
+                    </button>
+                  )}
+
+                  {onOpenTracking && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowBuyNowModal(false);
+                        onClose();
+                        onOpenTracking();
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-[#242632] hover:bg-[#2f3240] text-emerald-400 font-bold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all cursor-pointer"
+                    >
+                      <Truck className="w-4 h-4" />
+                      <span>অর্ডার ট্র্যাক করুন</span>
+                    </button>
+                  )}
+
                   <button
+                    type="button"
                     onClick={() => {
                       setShowBuyNowModal(false);
                       onClose();
                     }}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs shadow-lg transition-all cursor-pointer"
+                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs shadow-lg transition-all cursor-pointer"
                   >
-                    ঠিক আছে, মার্কেটপ্লেসে ফিরে যান
+                    মার্কেটপ্লেসে ফিরুন
                   </button>
                 </div>
               </div>
@@ -1176,6 +1434,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           </div>
         </div>
+      )}
+
+      {/* Digital Printable Invoice Modal */}
+      {showInvoiceModal && (
+        <InvoiceModal
+          invoice={confirmedInvoice}
+          onClose={() => setShowInvoiceModal(false)}
+        />
       )}
 
     </div>

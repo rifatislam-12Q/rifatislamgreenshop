@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Settings,
@@ -12,10 +12,8 @@ import {
   ShieldAlert,
   Globe,
   Bell,
-  Moon,
   Send,
   HelpCircle,
-  ExternalLink,
   Save,
   ArrowLeft
 } from 'lucide-react';
@@ -26,6 +24,14 @@ interface QuickMenuModalProps {
   defaultSection?: 'settings' | 'report' | 'customer_service';
 }
 
+interface SavedTicket {
+  id: string;
+  type: string;
+  orderNo?: string;
+  detail: string;
+  date: string;
+}
+
 export const QuickMenuModal: React.FC<QuickMenuModalProps> = ({
   isOpen,
   onClose,
@@ -33,12 +39,58 @@ export const QuickMenuModal: React.FC<QuickMenuModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'settings' | 'report' | 'customer_service'>(defaultSection);
 
-  // Settings State
-  const [language, setLanguage] = useState<'bn' | 'en'>('bn');
-  const [currency, setCurrency] = useState<'bdt' | 'usd'>('bdt');
-  const [orderNotifs, setOrderNotifs] = useState(true);
-  const [promoSms, setPromoSms] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(defaultSection);
+    }
+  }, [isOpen, defaultSection]);
+
+  // Settings State (persisted in localStorage)
+  const [language, setLanguage] = useState<'bn' | 'en'>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_settings_v1');
+      if (saved) return JSON.parse(saved).language || 'bn';
+    } catch {
+      // fallback
+    }
+    return 'bn';
+  });
+  const [currency, setCurrency] = useState<'bdt' | 'usd'>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_settings_v1');
+      if (saved) return JSON.parse(saved).currency || 'bdt';
+    } catch {
+      // fallback
+    }
+    return 'bdt';
+  });
+  const [orderNotifs, setOrderNotifs] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_settings_v1');
+      if (saved) return JSON.parse(saved).orderNotifs ?? true;
+    } catch {
+      // fallback
+    }
+    return true;
+  });
+  const [promoSms, setPromoSms] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_settings_v1');
+      if (saved) return JSON.parse(saved).promoSms ?? false;
+    } catch {
+      // fallback
+    }
+    return false;
+  });
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_settings_v1');
+      if (saved) return JSON.parse(saved).soundEnabled ?? true;
+    } catch {
+      // fallback
+    }
+    return true;
+  });
   const [settingsSaved, setSettingsSaved] = useState(false);
 
   // Report State
@@ -47,6 +99,15 @@ export const QuickMenuModal: React.FC<QuickMenuModalProps> = ({
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [reportTicketId, setReportTicketId] = useState('');
+  const [savedTickets, setSavedTickets] = useState<SavedTicket[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_report_tickets_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return [];
+  });
 
   // Customer Service State
   const [supportMessage, setSupportMessage] = useState('');
@@ -57,6 +118,14 @@ export const QuickMenuModal: React.FC<QuickMenuModalProps> = ({
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      localStorage.setItem(
+        'greenshop_settings_v1',
+        JSON.stringify({ language, currency, orderNotifs, promoSms, soundEnabled })
+      );
+    } catch {
+      // ignore
+    }
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2500);
   };
@@ -68,6 +137,22 @@ export const QuickMenuModal: React.FC<QuickMenuModalProps> = ({
     const ticket = `REP-${Math.floor(100000 + Math.random() * 900000)}`;
     setReportTicketId(ticket);
     setReportSubmitted(true);
+    const nextTickets: SavedTicket[] = [
+      {
+        id: ticket,
+        type: reportType,
+        orderNo: reportOrderNo.trim() || undefined,
+        detail: reportText.trim(),
+        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      },
+      ...savedTickets,
+    ].slice(0, 10);
+    setSavedTickets(nextTickets);
+    try {
+      localStorage.setItem('greenshop_report_tickets_v1', JSON.stringify(nextTickets));
+    } catch {
+      // ignore
+    }
   };
 
   const handleSendSupportMessage = (e: React.FormEvent) => {
@@ -423,6 +508,31 @@ export const QuickMenuModal: React.FC<QuickMenuModalProps> = ({
                   >
                     আরেকটি রিপোর্ট করুন
                   </button>
+                </div>
+              )}
+
+              {savedTickets.length > 0 && (
+                <div className="pt-3 border-t border-[#252734] space-y-2">
+                  <p className="text-[11px] font-bold text-neutral-400">
+                    পূর্বের জমাকৃত রিপোর্টসমূহ ({savedTickets.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {savedTickets.map((t) => (
+                      <div
+                        key={t.id}
+                        className="p-2.5 rounded-xl bg-[#121318] border border-[#252734] flex items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-mono font-bold text-rose-400">#{t.id}</span>
+                          {t.orderNo && (
+                            <span className="text-neutral-400 ml-2">· {t.orderNo}</span>
+                          )}
+                          <p className="text-[11px] text-neutral-300 truncate">{t.detail}</p>
+                        </div>
+                        <span className="text-[10px] text-neutral-500 shrink-0">{t.date}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

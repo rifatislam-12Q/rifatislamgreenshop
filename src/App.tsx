@@ -7,6 +7,7 @@ import { CartDrawer } from './components/CartDrawer';
 import { ChatModal } from './components/ChatModal';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { AuthModal } from './components/AuthModal';
+import { QuickMenuModal } from './components/QuickMenuModal';
 import { LiveBazarView } from './components/views/LiveBazarView';
 import { TrackingView } from './components/views/TrackingView';
 import { DashboardView } from './components/views/DashboardView';
@@ -19,14 +20,16 @@ import { AdBoard } from './components/AdBoard';
 import { TrustBanner } from './components/TrustBanner';
 import { INITIAL_PRODUCTS } from './data/products';
 import { INITIAL_NOTIFICATIONS } from './data/notifications';
-import { Product, CartItem, SidebarTab, AppNotification, CurrentUser } from './types';
-import { MessageSquare, Briefcase, Sparkles, Check, Phone, ArrowRight } from 'lucide-react';
+import { Product, CartItem, SidebarTab, AppNotification, CurrentUser, SortOption, QuickFilter } from './types';
+import { MessageSquare } from 'lucide-react';
 
 export default function App() {
   // State
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [sortBy, setSortBy] = useState<SortOption>('featured');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<SidebarTab>('home');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
@@ -42,6 +45,8 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState<boolean>(false);
+  const [quickMenuSection, setQuickMenuSection] = useState<'settings' | 'report' | 'customer_service'>('settings');
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
   const [selectedProductForChat, setSelectedProductForChat] = useState<Product | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -271,27 +276,44 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  // Filtered products based on search and category
+  // Filtered & sorted products based on search, category, quick filter, and sort order
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    const matched = products.filter((product) => {
       const matchesSearch =
         product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.description.toLowerCase().includes(searchQuery.toLowerCase());
 
+      if (!matchesSearch) return false;
+
+      if (quickFilter === 'organic' && !product.isOrganic) return false;
+      if (quickFilter === 'handmade' && !product.isHandmade) return false;
+      if (quickFilter === 'under-500' && product.price >= 500) return false;
+
       if (selectedCategory === 'Wishlist') {
-        return matchesSearch && favorites.includes(product.id);
+        return favorites.includes(product.id);
       }
 
-      const matchesCategory =
+      return (
         selectedCategory === 'All' ||
         product.category === selectedCategory ||
         (selectedCategory === 'Home & Garden' && product.isHandmade) ||
-        (selectedCategory === 'Organic Food' && product.isOrganic);
-
-      return matchesCategory && matchesSearch;
+        (selectedCategory === 'Organic Food' && product.isOrganic)
+      );
     });
-  }, [products, selectedCategory, searchQuery, favorites]);
+
+    const sorted = [...matched];
+    if (sortBy === 'price-asc') {
+      sorted.sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price-desc') {
+      sorted.sort((a, b) => b.price - a.price);
+    } else if (sortBy === 'rating') {
+      sorted.sort((a, b) => b.rating - a.rating || b.reviewsCount - a.reviewsCount);
+    } else if (sortBy === 'newest') {
+      sorted.reverse();
+    }
+    return sorted;
+  }, [products, selectedCategory, searchQuery, favorites, quickFilter, sortBy]);
 
   const totalCartCount = cart.reduce((total, item) => total + item.quantity, 0);
   const isDashboard = activeTab === 'dashboard';
@@ -335,6 +357,10 @@ export default function App() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
           unreadChatCount={2}
           unreadNotificationCount={unreadNotificationCount}
+          onOpenSettings={(section = 'settings') => {
+            setQuickMenuSection(section);
+            setIsQuickMenuOpen(true);
+          }}
         />
 
         {/* Center/Right Content Area */}
@@ -366,12 +392,17 @@ export default function App() {
               {/* Ad Board (Admin Controlled) in the gap between Header Search and Categories */}
               <AdBoard onSelectCategory={setSelectedCategory} />
 
-              {/* Category Filter Chips with Wishlist count */}
+              {/* Category Filter Chips, Quick Filters & Sorting */}
               <CategoryChips
                 categories={categories}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
                 favoriteCount={favorites.length}
+                sortBy={sortBy}
+                onSortChange={setSortBy}
+                quickFilter={quickFilter}
+                onQuickFilterChange={setQuickFilter}
+                totalResults={filteredProducts.length}
               />
 
               {/* Product Grid Header info if searching or in Wishlist */}
@@ -438,8 +469,10 @@ export default function App() {
                     onClick={() => {
                       setSelectedCategory('All');
                       setSearchQuery('');
+                      setQuickFilter('all');
+                      setSortBy('featured');
                     }}
-                    className="px-4 py-2 bg-[#252630] hover:bg-[#30323e] text-emerald-400 rounded-xl text-xs font-semibold"
+                    className="px-4 py-2 bg-[#252630] hover:bg-[#30323e] text-emerald-400 rounded-xl text-xs font-semibold cursor-pointer"
                   >
                     Reset Filters
                   </button>
@@ -594,6 +627,8 @@ export default function App() {
         onRemoveItem={handleRemoveItem}
         onClearCart={handleClearCart}
         onCheckoutSuccess={handleCheckoutSuccess}
+        currentUser={currentUser}
+        onOpenTracking={() => setActiveTab('tracking')}
       />
 
       <ChatModal
@@ -610,12 +645,20 @@ export default function App() {
         onClose={() => setSelectedProductForDetail(null)}
         onAddToCart={handleAddToCart}
         onChatWithSeller={handleChatWithSeller}
+        currentUser={currentUser}
+        onOpenTracking={() => setActiveTab('tracking')}
       />
 
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={handleLoginSuccess}
+      />
+
+      <QuickMenuModal
+        isOpen={isQuickMenuOpen}
+        onClose={() => setIsQuickMenuOpen(false)}
+        defaultSection={quickMenuSection}
       />
     </div>
   );

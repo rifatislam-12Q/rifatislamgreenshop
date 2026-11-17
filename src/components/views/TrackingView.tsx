@@ -12,8 +12,13 @@ import {
   Sparkles,
   ArrowRight,
   Search,
-  Plus
+  Plus,
+  FileText,
+  RotateCcw,
+  X
 } from 'lucide-react';
+import { InvoiceData, PaymentMethodType } from '../../types';
+import { InvoiceModal } from '../InvoiceModal';
 
 export interface TrackedProductOrder {
   id: string;
@@ -24,12 +29,30 @@ export interface TrackedProductOrder {
   price: number;
   quantity: number;
   recipient: string;
+  phone?: string;
   address: string;
+  paymentMethod?: PaymentMethodType;
+  trxId?: string;
+  promoCode?: string;
+  discountAmount?: number;
+  deliveryCharge?: number;
+  subtotal?: number;
+  items?: InvoiceData['items'];
   stage: 1 | 2 | 3 | 4 | 5;
   stageLabel: string;
   currentLocationNote: string;
   estimatedDelivery: string;
   placedTime: string;
+}
+
+interface ReturnRequestItem {
+  ticketId: string;
+  orderNumber: string;
+  reason: string;
+  refundMethod: string;
+  accountNumber: string;
+  notes: string;
+  createdAt: string;
 }
 
 const DEFAULT_TRACKED_ORDERS: TrackedProductOrder[] = [
@@ -135,9 +158,94 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
   const [selectedOrderId, setSelectedOrderId] = useState<string>(orders[0]?.id || 'track-1');
   const [showTrackModal, setShowTrackModal] = useState<boolean>(false);
   const [inputOrderCode, setInputOrderCode] = useState<string>('');
+  const [invoiceForView, setInvoiceForView] = useState<InvoiceData | null>(null);
+
+  // Return / Refund Request state
+  const [showReturnModal, setShowReturnModal] = useState<boolean>(false);
+  const [returnReason, setReturnReason] = useState<string>('ভাঙা বা ক্ষতিগ্রস্ত পণ্য');
+  const [refundChannel, setRefundChannel] = useState<string>('bKash');
+  const [refundAccount, setRefundAccount] = useState<string>('');
+  const [returnNotes, setReturnNotes] = useState<string>('');
+  const [returnTicketCreated, setReturnTicketCreated] = useState<string | null>(null);
+  const [returnRequests, setReturnRequests] = useState<ReturnRequestItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('greenshop_return_requests_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return [];
+  });
 
   const activeOrder = orders.find((o) => o.id === selectedOrderId) || orders[0];
   const currentStage = activeOrder.stage;
+  const activeOrderReturn = returnRequests.find(
+    (r) => r.orderNumber === activeOrder.orderNumber
+  );
+
+  const updateOrderStage = (stage: 1 | 2 | 3 | 4 | 5, stageLabel: string) => {
+    const updated = orders.map((o) =>
+      o.id === activeOrder.id ? { ...o, stage, stageLabel } : o
+    );
+    setOrders(updated);
+    try {
+      localStorage.setItem('greenshop_tracked_orders_v1', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleOpenInvoice = () => {
+    const fallbackItems: InvoiceData['items'] = activeOrder.items || [
+      {
+        title: activeOrder.productTitle,
+        vendor: activeOrder.vendor,
+        quantity: activeOrder.quantity || 1,
+        unitPrice: Math.round(activeOrder.price / Math.max(1, activeOrder.quantity || 1)),
+      },
+    ];
+    const subtotalCalc =
+      activeOrder.subtotal ??
+      fallbackItems.reduce((s, it) => s + it.unitPrice * it.quantity, 0);
+
+    setInvoiceForView({
+      orderNumber: activeOrder.orderNumber,
+      date: activeOrder.placedTime,
+      customerName: activeOrder.recipient,
+      phone: activeOrder.phone || '০১৭১২-০০০০০০',
+      address: activeOrder.address,
+      paymentMethod: activeOrder.paymentMethod || 'cash_on_delivery',
+      trxId: activeOrder.trxId,
+      promoCode: activeOrder.promoCode,
+      discountAmount: activeOrder.discountAmount,
+      deliveryCharge: activeOrder.deliveryCharge ?? 0,
+      subtotal: subtotalCalc,
+      totalAmount: activeOrder.price,
+      items: fallbackItems,
+    });
+  };
+
+  const handleSubmitReturn = (e: React.FormEvent) => {
+    e.preventDefault();
+    const ticketId = `RET-${Math.floor(100000 + Math.random() * 900000)}`;
+    const newReq: ReturnRequestItem = {
+      ticketId,
+      orderNumber: activeOrder.orderNumber,
+      reason: returnReason,
+      refundMethod: refundChannel,
+      accountNumber: refundAccount.trim() || 'N/A',
+      notes: returnNotes.trim(),
+      createdAt: 'এইমাত্র',
+    };
+    const nextList = [newReq, ...returnRequests];
+    setReturnRequests(nextList);
+    try {
+      localStorage.setItem('greenshop_return_requests_v1', JSON.stringify(nextList));
+    } catch {
+      // ignore
+    }
+    setReturnTicketCreated(ticketId);
+  };
 
   const handleTrackNewOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,7 +270,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
       vendor: 'GreenShop Verified Seller',
       price: 550,
       quantity: 1,
-      recipient: 'Ursports Skillhub',
+      recipient: 'GreenShop Customer',
       address: 'Mirpur, Dhaka',
       stage: 3,
       stageLabel: 'In Transit (Rod)',
@@ -319,14 +427,48 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
             </div>
           </div>
 
-          <div className="sm:text-right shrink-0 bg-white sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-0 border-neutral-200/50">
-            <span className="text-[10px] uppercase font-bold text-neutral-400 block tracking-wide">
-              Estimated Delivery
-            </span>
-            <span className="text-xs sm:text-sm font-bold text-emerald-700 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              {activeOrder.estimatedDelivery}
-            </span>
+          <div className="sm:text-right shrink-0 flex flex-col sm:items-end gap-2">
+            <div className="bg-white sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-0 border-neutral-200/50">
+              <span className="text-[10px] uppercase font-bold text-neutral-400 block tracking-wide">
+                Estimated Delivery
+              </span>
+              <span className="text-xs sm:text-sm font-bold text-emerald-700 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" />
+                {activeOrder.estimatedDelivery}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleOpenInvoice}
+                className="px-3 py-1.5 rounded-lg bg-white hover:bg-neutral-50 border border-neutral-300 text-neutral-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                <span>ইনভয়েস / মেমো</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnTicketCreated(activeOrderReturn?.ticketId || null);
+                  setReturnNotes('');
+                  setShowReturnModal(true);
+                }}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer ${
+                  activeOrderReturn
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : 'bg-white hover:bg-rose-50 border-neutral-300 hover:border-rose-300 text-neutral-700 hover:text-rose-700'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>
+                  {activeOrderReturn
+                    ? `রিটার্ন (#${activeOrderReturn.ticketId})`
+                    : 'রিটার্ন / রিফান্ড'}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -389,12 +531,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
               {/* STAGE 1: Seller */}
               <div
                 className="flex flex-col items-center group cursor-pointer"
-                onClick={() => {
-                  const updated = orders.map((o) =>
-                    o.id === activeOrder.id ? { ...o, stage: 1 as const, stageLabel: 'Seller' } : o
-                  );
-                  setOrders(updated);
-                }}
+                onClick={() => updateOrderStage(1, 'Seller')}
               >
                 <div
                   className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${
@@ -413,12 +550,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
               {/* STAGE 2: Office */}
               <div
                 className="flex flex-col items-center group cursor-pointer"
-                onClick={() => {
-                  const updated = orders.map((o) =>
-                    o.id === activeOrder.id ? { ...o, stage: 2 as const, stageLabel: 'Office' } : o
-                  );
-                  setOrders(updated);
-                }}
+                onClick={() => updateOrderStage(2, 'Office')}
               >
                 <div
                   className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${
@@ -466,12 +598,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
               {/* STAGE 3: In Transit (Rod) - WITH GLOWING HALO WHEN ACTIVE */}
               <div
                 className="flex flex-col items-center group cursor-pointer"
-                onClick={() => {
-                  const updated = orders.map((o) =>
-                    o.id === activeOrder.id ? { ...o, stage: 3 as const, stageLabel: 'In Transit (Rod)' } : o
-                  );
-                  setOrders(updated);
-                }}
+                onClick={() => updateOrderStage(3, 'In Transit (Rod)')}
               >
                 <div className="relative">
                   {/* Glowing Blue/Cyan Halo Effect if stage 3 */}
@@ -548,12 +675,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
               {/* STAGE 4: Office (Hub) */}
               <div
                 className="flex flex-col items-center group cursor-pointer"
-                onClick={() => {
-                  const updated = orders.map((o) =>
-                    o.id === activeOrder.id ? { ...o, stage: 4 as const, stageLabel: 'Office (Hub)' } : o
-                  );
-                  setOrders(updated);
-                }}
+                onClick={() => updateOrderStage(4, 'Office (Hub)')}
               >
                 <div className="relative">
                   {currentStage === 4 && (
@@ -597,12 +719,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
               {/* STAGE 5: Out for Delivery */}
               <div
                 className="flex flex-col items-center group cursor-pointer"
-                onClick={() => {
-                  const updated = orders.map((o) =>
-                    o.id === activeOrder.id ? { ...o, stage: 5 as const, stageLabel: 'Out for Delivery' } : o
-                  );
-                  setOrders(updated);
-                }}
+                onClick={() => updateOrderStage(5, 'Out for Delivery')}
               >
                 <div className="relative">
                   {currentStage === 5 && (
@@ -684,6 +801,146 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ onBackToOrders }) =>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Return & Refund Request Modal */}
+      {showReturnModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-neutral-200 text-neutral-900 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 mb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-neutral-900">
+                  রিটার্ন ও রিফান্ড রিকোয়েস্ট
+                </h3>
+                <p className="text-xs text-neutral-500 font-mono">
+                  Order #{activeOrder.orderNumber} · {activeOrder.productTitle}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReturnModal(false)}
+                className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {returnTicketCreated ? (
+              <div className="py-4 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <h4 className="text-sm font-bold text-neutral-900">
+                  রিটার্ন রিকোয়েস্ট সফলভাবে গৃহীত হয়েছে
+                </h4>
+                <p className="text-xs text-neutral-600">
+                  রিকোয়েস্ট টিকিট নম্বর:{' '}
+                  <span className="font-mono font-bold text-emerald-700">
+                    #{returnTicketCreated}
+                  </span>
+                </p>
+                <p className="text-xs text-neutral-500">
+                  আমাদের সাপোর্ট প্রতিনিধি ২৪ ঘণ্টার মধ্যে আপনার সাথে যোগাযোগ করে পিকআপ ও রিফান্ড সম্পন্ন করবেন।
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowReturnModal(false)}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  ঠিক আছে
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitReturn} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="font-bold text-neutral-700 block mb-1">
+                    রিটার্নের কারণ নির্বাচন করুন *
+                  </label>
+                  <select
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-emerald-600"
+                  >
+                    <option value="ভাঙা বা ক্ষতিগ্রস্ত পণ্য">ভাঙা বা ক্ষতিগ্রস্ত পণ্য ডেলিভারি</option>
+                    <option value="ভুল প্রোডাক্ট ডেলিভারি">অর্ডার করা পণ্যের বদলে ভুল পণ্য এসেছে</option>
+                    <option value="কোয়ালিটি সমস্যার কারণে রিটার্ন">কোয়ালিটি আশানুরূপ নয়</option>
+                    <option value="এক্সচেঞ্জ / সাইজ পরিবর্তন">এক্সচেঞ্জ বা পরিবর্তন করতে চাই</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-bold text-neutral-700 block mb-1">
+                      রিফান্ড মাধ্যম *
+                    </label>
+                    <select
+                      value={refundChannel}
+                      onChange={(e) => setRefundChannel(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-neutral-300 bg-white text-neutral-900 focus:outline-none focus:border-emerald-600"
+                    >
+                      <option value="bKash">bKash</option>
+                      <option value="Nagad">Nagad</option>
+                      <option value="Rocket">Rocket</option>
+                      <option value="Replacement">নতুন পণ্য রিপ্লেসমেন্ট</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-neutral-700 block mb-1">
+                      মোবাইল নম্বর *
+                    </label>
+                    <input
+                      type="tel"
+                      required={refundChannel !== 'Replacement'}
+                      placeholder="017XXXXXXXX"
+                      value={refundAccount}
+                      onChange={(e) => setRefundAccount(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-neutral-700 block mb-1">
+                    বিস্তারিত বর্ণনা *
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="সমস্যার সংক্ষিপ্ত বিবরণ লিখুন..."
+                    value={returnNotes}
+                    onChange={(e) => setReturnNotes(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-300 text-neutral-900 focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReturnModal(false)}
+                    className="px-4 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 rounded-lg cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm cursor-pointer"
+                  >
+                    রিকোয়েস্ট পাঠান
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Printable Invoice Modal */}
+      {invoiceForView && (
+        <InvoiceModal
+          invoice={invoiceForView}
+          onClose={() => setInvoiceForView(null)}
+        />
       )}
     </div>
   );

@@ -5,20 +5,14 @@ import {
   ShoppingCart,
   Bell,
   Menu,
-  Settings,
-  AlertTriangle,
-  Headphones,
-  ChevronRight,
   User,
   LogOut,
-  UserPlus,
   X,
   Sparkles,
   Plus,
-  Check
+  ArrowLeft
 } from 'lucide-react';
 import { SidebarTab, CurrentUser, Product } from '../types';
-import { QuickMenuModal } from './QuickMenuModal';
 
 interface HeaderProps {
   searchQuery: string;
@@ -64,18 +58,9 @@ export const Header: React.FC<HeaderProps> = ({
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // 3-line menu dropdown and modal states
-  const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
-  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
-  const [modalSection, setModalSection] = useState<'settings' | 'report' | 'customer_service'>('settings');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsMenuDropdownOpen(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
       }
@@ -101,16 +86,14 @@ export const Header: React.FC<HeaderProps> = ({
       .slice(0, 5);
   }, [searchQuery, products]);
 
-  const handleOpenSection = (section: 'settings' | 'report' | 'customer_service') => {
-    setModalSection(section);
-    setIsMenuDropdownOpen(false);
-    setIsQuickModalOpen(true);
-  };
-
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-2 sm:px-4 md:px-6 py-2 sm:py-2.5 md:py-3 bg-[#121215]/95 backdrop-blur-md border-b border-[#232328] text-white">
-      {/* Left: Mobile Menu, Brand Logo & 3-line Options Icon */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+      {/* Left: Mobile Menu & Brand Logo */}
+      <div
+        className={`items-center gap-1.5 sm:gap-2.5 shrink-0 ${
+          isSearchFocused ? 'hidden sm:flex' : 'flex'
+        }`}
+      >
         <button
           id="mobile-sidebar-toggle-btn"
           onClick={onToggleMobileSidebar}
@@ -120,135 +103,85 @@ export const Header: React.FC<HeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <a
-          href="#"
-          id="brand-logo-link"
-          className="flex items-center gap-1.5 sm:gap-2.5 group transition-transform active:scale-95 select-none"
-        >
-          {/* Green shopping bag icon matching branding */}
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 flex items-center justify-center border border-emerald-500/30 text-emerald-400 group-hover:border-emerald-400/60 group-hover:shadow-md group-hover:shadow-emerald-500/20 transition-all duration-300">
-            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 group-hover:scale-105 transition-transform" />
-          </div>
-          <span className="text-base sm:text-xl font-bold tracking-tight text-white hidden min-[380px]:inline-flex items-center">
-            Green<span className="text-emerald-400">Shop</span>
-          </span>
-        </a>
-
-        {/* 3-Line Menu Button Right Beside GreenShop Logo */}
-        <div className="relative" ref={dropdownRef}>
-          <button
-            id="greenshop-3line-menu-btn"
-            onClick={() => setIsMenuDropdownOpen(!isMenuDropdownOpen)}
-            title="সেটিংস, রিপোর্ট ও কাস্টমার সার্ভিস"
-            aria-label="Settings, Report, Customer Service menu"
-            className={`p-1.5 sm:p-2 rounded-xl border transition-all active:scale-95 flex items-center justify-center cursor-pointer ${
-              isMenuDropdownOpen
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-sm'
-                : 'bg-[#1a1b20] hover:bg-[#24252f] text-neutral-300 hover:text-emerald-400 border-[#2b2d37] hover:border-emerald-500/40'
-            }`}
+        {!isSearchFocused && (
+          <a
+            href="#"
+            id="brand-logo-link"
+            className="flex items-center group transition-transform active:scale-95 select-none shrink-0"
           >
-            <Menu className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
-          </button>
-
-          {/* Dropdown Menu Popup */}
-          {isMenuDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-64 bg-[#16171f] border border-[#2b2d3a] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 p-1.5 space-y-1">
-              <div className="px-3 py-2 border-b border-[#242633] text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
-                সহায়তা ও সেটিংস মেনু
-              </div>
-
-              {/* 1. সেটিং (Settings) */}
-              <button
-                onClick={() => handleOpenSection('settings')}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-[#20222d] text-left text-xs text-neutral-200 hover:text-white transition-all group cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 group-hover:bg-emerald-500 group-hover:text-black transition-colors">
-                    <Settings className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="font-bold block text-white">সেটিংস (Settings)</span>
-                    <span className="text-[10px] text-neutral-400">ভাষা, কারেন্সি ও নোটিফিকেশন</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-              </button>
-
-              {/* 2. রিপোর্ট (Report) */}
-              <button
-                onClick={() => handleOpenSection('report')}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-[#20222d] text-left text-xs text-neutral-200 hover:text-white transition-all group cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-rose-500/15 text-rose-400 group-hover:bg-rose-500 group-hover:text-white transition-colors">
-                    <AlertTriangle className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="font-bold block text-white">রিপোর্ট (Report)</span>
-                    <span className="text-[10px] text-neutral-400">নকল পণ্য বা সেলারের বিরুদ্ধে অভিযোগ</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-              </button>
-
-              {/* 3. কাস্টমার সার্ভিস (Customer Service) */}
-              <button
-                onClick={() => handleOpenSection('customer_service')}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-[#20222d] text-left text-xs text-neutral-200 hover:text-white transition-all group cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-blue-500/15 text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                    <Headphones className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="font-bold block text-white">কাস্টমার সার্ভিস (Customer Service)</span>
-                    <span className="text-[10px] text-neutral-400">হটলাইন, হোয়াটসঅ্যাপ ও লাইভ সাপোর্ট</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
-              </button>
-            </div>
-          )}
-        </div>
+            <span className="text-base sm:text-xl font-bold tracking-tight text-white inline-flex items-center whitespace-nowrap">
+              Green<span className="text-emerald-400">Shop</span>
+            </span>
+          </a>
+        )}
       </div>
 
       {/* Center: Search Bar with Live Preview Dropdown */}
-      <div className="flex-1 min-w-[85px] max-w-xl mx-1.5 sm:mx-4 md:mx-8 relative" ref={searchContainerRef}>
+      <div
+        className={`flex-1 min-w-[85px] relative transition-all duration-200 ${
+          isSearchFocused
+            ? 'max-w-2xl mx-1.5 sm:mx-3 md:mx-4'
+            : 'max-w-xl mx-1.5 sm:mx-4 md:mx-8'
+        }`}
+        ref={searchContainerRef}
+      >
         <div className="relative flex items-center group">
-          <input
-            id="global-search-input"
-            type="text"
-            value={searchQuery}
-            onFocus={() => setIsSearchFocused(true)}
-            onChange={(e) => {
-              onSearchChange(e.target.value);
-              setIsSearchFocused(true);
-            }}
-            placeholder="Search products, organic items..."
-            className="w-full h-8 sm:h-9 md:h-10 pl-3 sm:pl-4 pr-14 sm:pr-16 text-xs sm:text-sm bg-[#1a1b20] text-neutral-200 placeholder-neutral-500 rounded-full border border-neutral-800 focus:border-emerald-500 focus:bg-[#1e1f25] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
-          />
-
-          <div className="absolute right-2.5 sm:right-3 flex items-center gap-1">
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSearchChange('');
-                  setIsSearchFocused(false);
-                }}
-                className="p-1 text-neutral-400 hover:text-white rounded-full hover:bg-neutral-800 transition-colors cursor-pointer"
-                title="সার্চ ক্লিয়ার করুন"
-              >
-                <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-              </button>
-            )}
+          {isSearchFocused && (
             <button
-              id="global-search-btn"
-              aria-label="Search"
-              className="p-1 text-neutral-400 hover:text-emerald-400 transition-colors cursor-pointer"
+              type="button"
+              onClick={() => setIsSearchFocused(false)}
+              aria-label="Close search focus"
+              title="পিছনে যান"
+              className="mr-1.5 p-1.5 rounded-full bg-[#1a1b20] hover:bg-[#242630] text-neutral-300 hover:text-emerald-400 border border-neutral-800 transition-colors shrink-0 cursor-pointer"
             >
-              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <ArrowLeft className="w-4 h-4" />
             </button>
+          )}
+
+          <div className="relative flex-1 flex items-center">
+            <input
+              id="global-search-input"
+              type="text"
+              value={searchQuery}
+              onFocus={() => setIsSearchFocused(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIsSearchFocused(false);
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              onChange={(e) => {
+                onSearchChange(e.target.value);
+                setIsSearchFocused(true);
+              }}
+              placeholder="Search products..."
+              className={`w-full h-9 sm:h-10 pl-3.5 sm:pl-4 ${
+                searchQuery ? 'pr-14 sm:pr-16' : 'pr-9 sm:pr-10'
+              } text-xs sm:text-sm bg-[#1a1b20] text-neutral-100 placeholder-neutral-500 rounded-full border border-neutral-800 focus:border-emerald-500 focus:bg-[#1e1f25] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200`}
+            />
+
+            <div className="absolute right-2.5 sm:right-3 flex items-center gap-1">
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSearchChange('');
+                    setIsSearchFocused(false);
+                  }}
+                  className="p-1 text-neutral-400 hover:text-white rounded-full hover:bg-neutral-800 transition-colors cursor-pointer"
+                  title="সার্চ ক্লিয়ার করুন"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                id="global-search-btn"
+                aria-label="Search"
+                className="p-1 text-neutral-400 hover:text-emerald-400 transition-colors cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -318,7 +251,11 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Controls: Sign Up / Profile, Notification and Shop Icons */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3 shrink-0">
+      <div
+        className={`items-center gap-1.5 sm:gap-2.5 md:gap-3 shrink-0 ${
+          isSearchFocused ? 'hidden sm:flex' : 'flex'
+        }`}
+      >
         
         {/* Sign Up Button (Visible only when user is NOT logged in) */}
         {!currentUser?.isLoggedIn ? (
@@ -326,7 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
             id="header-signup-btn"
             onClick={onOpenAuth}
             title="গ্রিনশপে সাইন আপ বা লগইন করুন"
-            className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-600 hover:from-emerald-500 hover:to-green-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition-all cursor-pointer group shrink-0"
+            className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-600 hover:from-emerald-500 hover:to-green-500 active:scale-95 text-white font-bold text-xs shadow-md shadow-emerald-950/40 border border-emerald-400/40 transition-all cursor-pointer group shrink-0 whitespace-nowrap"
           >
             {/* GreenShop Shopping Bag Icon */}
             <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
@@ -469,13 +406,6 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
       </div>
-
-      {/* Quick Menu Modal (Settings, Report, Customer Service) */}
-      <QuickMenuModal
-        isOpen={isQuickModalOpen}
-        onClose={() => setIsQuickModalOpen(false)}
-        defaultSection={modalSection}
-      />
     </header>
   );
 };
